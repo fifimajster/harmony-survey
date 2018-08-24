@@ -1,3 +1,4 @@
+import curses
 import pickle
 import threading
 from time import time, sleep
@@ -5,24 +6,50 @@ from time import time, sleep
 import numpy as np
 import pyaudio  # sudo apt-get install python-pyaudio
 
-BITRATE = 44000
-BASE_FREQUENCY = 300
-DURATION = 0.01  # seconds
+BIT_RATE = 44000
+help_msg = """
+rate how harmonious this sounds on a scale from 1 to 9
+press q to quit
+
+"""
 
 p = pyaudio.PyAudio()     # initialize pyaudio
 
 # for paFloat32 sample values must be in range [-1.0, 1.0]
 stream = p.open(format=pyaudio.paFloat32,
                 channels=1,
-                rate=BITRATE,
+                rate=BIT_RATE,
                 output=True)
 
 
+def input_char():
+    """
+    get single char from stdin without pressing enter
+    credit: stackoverflow.com/questions/3523174/raw-input-in-python-without-pressing-enter
+    """
+    try:
+        win = curses.initscr()
+        win.addstr(0, 0, help_msg)
+        while True:
+            ch = win.getch()
+            if ch == 'q':
+                raise KeyboardInterrupt
+            if ch in range(32, 127):
+                break
+            sleep(0.01)
+    except:
+        raise
+    finally:
+        curses.endwin()
+    return chr(ch)
+
+
 class PolyphonicPlayer(threading.Thread):
-    def __init__(self, stream, segment_duration):
+    segment_duration = 0.01  # seconds
+
+    def __init__(self, stream):
         threading.Thread.__init__(self)
         self.stream = stream
-        self.segment_duration = segment_duration
         self.alive = True
         self.frequencies = []
         self.phases = [0, 0, 0, 0, 0, 0, 0]
@@ -40,7 +67,7 @@ class PolyphonicPlayer(threading.Thread):
             final_sound = 0
             for i, frequency in enumerate(self.frequencies):
                 final_sound += self.get_wave(frequency, self.phases[i])
-                self.phases[i] += (self.segment_duration) * frequency * 2*np.pi
+                self.phases[i] += self.segment_duration * frequency * 2*np.pi
                 self.phases[i] %= 2*np.pi
 
             final_sound /= len(self.frequencies)    # adjust volume
@@ -51,9 +78,9 @@ class PolyphonicPlayer(threading.Thread):
                               .tobytes())
 
     def get_wave(self, frequency, phase):
-        return np.sin(2*np.pi *
-                      np.arange(BITRATE * self.segment_duration) *
-                      frequency / BITRATE
+        return np.sin(2 * np.pi *
+                      np.arange(BIT_RATE * self.segment_duration) *
+                      frequency / BIT_RATE
                       + phase)
 
     def kill(self):
@@ -61,35 +88,30 @@ class PolyphonicPlayer(threading.Thread):
 
 
 if __name__ == '__main__':
-    filename = input('choose nick:') + ".pickle"
+    print('\nchoose nick:')
+    filename = "data/%s.pickle" % input()
     try:
         data = pickle.load(open(filename, "rb"))
-    except:
+    except IOError:
         # the file doesn't exist
         data = {}
 
-    phi = (1 + np.sqrt(5)) / 2
-    ratio = 1 + np.random.random()  # initialize as random value between 1 and 2
-    print("rate how harmonious this sounds on a scale from 1 to 9")
-
     try:
         while True:
-            # BASE_FREQUENCY = np.random.randint(200, 500)
-            player = PolyphonicPlayer(stream, DURATION)
+            BASE_FREQUENCY = np.random.randint(300, 500)
+            ratio = 1 + np.random.random()  # between 1 and 2
+
+            player = PolyphonicPlayer(stream)
             player.frequencies = [BASE_FREQUENCY, BASE_FREQUENCY * ratio]
 
             player.start()          # start playing in a loop
-            rating = int(input())   # get user rating from 1 to 9
+            rating = int(input_char())   # get user rating from 1 to 9
+
             player.kill()           # break the playing loop
             player.join()
-
             data[ratio] = rating    # save the rating
 
-            # update ratio
-            ratio = (ratio + 1/phi) % 1     # move around inside 0..1 range by golden ratio
-            ratio += 1          # must be between 1 and 2
-
-    except Exception as e:
+    except:
         # program interrupted
         # print(e)
 
@@ -97,5 +119,4 @@ if __name__ == '__main__':
 
         stream.stop_stream()
         stream.close()
-
         p.terminate()

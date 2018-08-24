@@ -24,7 +24,8 @@ def redraw():
 
 
 # load data
-filename = input() + ".pickle"
+print('\nchoose nick:')
+filename = "data/%s.pickle" % input()
 data = pickle.load(open(filename, "rb"))
 print(len(data))
 
