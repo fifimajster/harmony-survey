@@ -7,6 +7,7 @@ import numpy as np
 import pyaudio  # sudo apt-get install python-pyaudio
 
 BIT_RATE = 44000
+BASE_FREQUENCY = 300
 help_msg = """
 rate how harmonious this sounds on a scale from 1 to 9
 press q to quit
