@@ -1,18 +1,19 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.5
 """
 plays randomly chosen two notes
 asks user to rate how harmonious they sound
 saves gathered data
 """
-
+import csv
 import curses
-import pickle
+import datetime
+import os
+import pathlib
 import threading
 from time import time, sleep
 
 import numpy as np
 import pyaudio
-
 
 BIT_RATE = 44000
 BASE_FREQUENCY = 200
@@ -41,6 +42,8 @@ piano_amps = [0.0, 1.0, 0.399064778, 0.229404484, 0.151836061,
               # 0.006216476, 0.005116215, 0.006243983,
               # 0.002860679, 0.002558108, 0.0, 0.001650392]
 
+sine_amps = [0.0, 1.0]
+
 
 def input_char():
     """
@@ -52,7 +55,7 @@ def input_char():
         win.addstr(0, 0, help_msg)
         while True:
             ch = win.getch()
-            if ch == 'q':
+            if chr(ch) == 'q':
                 raise KeyboardInterrupt
             if ch in range(32, 127):
                 break
@@ -66,7 +69,7 @@ def input_char():
 
 class PolyphonicPlayer(threading.Thread):
     segment_duration = 0.01     # in seconds
-    amps = piano_amps          # tone (amplitude of the overtones)
+    amps = sine_amps          # tone (amplitude of the overtones)
 
     def __init__(self, stream):
         threading.Thread.__init__(self)
@@ -115,17 +118,18 @@ class PolyphonicPlayer(threading.Thread):
         self.alive = False
 
 
-def init():
-    # load data
-    print('choose nick:')
-    filename = "data/%s.pickle" % 'filip'
-    try:
-        data = pickle.load(open(filename, "rb"))
-    except IOError:
-        # the file doesn't exist
-        data = {}
-    print('data length: %d' % len(data))
+def get_dir_name(nick):
+    return "data/%s" % nick
 
+
+def get_file_name(nick):
+    dir_name = get_dir_name(nick)
+    return os.path.join(
+        dir_name,
+        datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
+
+def init_audio():
     # initialize pyaudio
     p = pyaudio.PyAudio()
     # for paFloat32 sample values must be in range [-1.0, 1.0]
@@ -133,33 +137,43 @@ def init():
                     channels=1,
                     rate=BIT_RATE,
                     output=True)
-    return data, p, stream, filename
+    return p, stream
 
 
 if __name__ == '__main__':
-    data, p, stream, filename = init()
+    p, stream = init_audio()
+    nick = input('\nchoose nick:\n')
+
+    dir_name = get_dir_name(nick)
+    pathlib.Path(dir_name).mkdir(parents=True, exist_ok=True)
+
+    filename = get_file_name(nick)
+
+    player = PolyphonicPlayer(stream)
+    player.start()  # start playing in a loop
 
     # survey until interrupted
     try:
+        csvfile = open(filename, 'w')
+        writer = csv.writer(csvfile)
         while True:
             ratio = 1 + np.random.random()  # between 1 and 2
-
-            player = PolyphonicPlayer(stream)
             first_frequency = np.random.randint(BASE_FREQUENCY, BASE_FREQUENCY * 2)
             second_frequency = first_frequency * ratio
             player.frequencies = [first_frequency, second_frequency]
-
-            player.start()          # start playing in a loop
-            rating = int(input_char())   # get user rating from 1 to 9
-
-            player.kill()           # break the playing loop
-            player.join()
-            data[ratio] = rating    # save the rating
-
-    except:
+            # get user rating from 1 to 9
+            rating = int(input_char())
+            # save the rating
+            writer.writerow([ratio, rating])
+    except (Exception, KeyboardInterrupt) as err:
         # program interrupted
-        pickle.dump(data, open(filename, "wb"))
+        csvfile.close()
 
+        player.kill()  # break the playing loop
+        player.join()
         stream.stop_stream()
         stream.close()
         p.terminate()
+
+        if type(err) != KeyboardInterrupt:
+            raise

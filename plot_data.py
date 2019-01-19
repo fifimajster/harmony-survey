@@ -5,25 +5,37 @@ click to form a chord
 blue is the harmony of a given interval
 orange is the harmony in a chord
 """
-
-import pickle
+import csv
+import glob
 
 import matplotlib.pyplot as plt
-import pyaudio
-import survey as sr
 from scipy.signal import savgol_filter
 from scipy.stats import rankdata
 
+import survey as sr
 
 # define plot
 plt.style.use('dark_background')
 fig, ax = plt.subplots()
 
 
-data, p, stream, filename = sr.init()
+p, stream = sr.init_audio()
 
-sorted_data = sorted(data.items())   # sorted by key, return a list of tuples
+data = []
+nick = input('\nchoose nick:\n')
+dir_name = sr.get_dir_name(nick)
+for file_name in glob.glob(dir_name + '/*'):
+    with open(file_name, 'r') as f:
+        reader = csv.reader(f)
+        for row in reader:
+            parsed_row = list(map(float, row))
+            data.append(parsed_row)
+
+sorted_data = sorted(data)   # sorted by key, return a list of tuples
 xs, ys = zip(*sorted_data)      # unpack a list of pairs into two tuples
+
+print('samples loaded: ', len(ys))
+
 ys = rankdata(ys) / len(ys)     # normalize ranking
 
 smooth = savgol_filter(ys, 15, 3)
@@ -56,6 +68,9 @@ def choose_second_frequency(event):
     also display in red predicted harmony of a third note, with the other two
     """
     global CHOSEN_RATIO
+    if not event.xdata:
+        return
+
     CHOSEN_RATIO = event.xdata
     player.frequencies = [sr.BASE_FREQUENCY,
                           sr.BASE_FREQUENCY * CHOSEN_RATIO,
@@ -74,6 +89,9 @@ def update_third_frequency(event):
     """
     choose third note of the chord, and play it
     """
+    if not event.xdata:
+        return
+
     if event.button == 1:
         choose_second_frequency(event)
         return
@@ -91,6 +109,8 @@ fig.canvas.mpl_connect('button_press_event', choose_second_frequency)
 fig.canvas.mpl_connect('motion_notify_event', update_third_frequency)
 
 plt.show()
+player.kill()  # break the playing loop
+player.join()
 stream.stop_stream()
 stream.close()
 p.terminate()
