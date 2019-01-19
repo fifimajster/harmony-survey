@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.5
+#!/usr/bin/env python3
 """
 plays randomly chosen two notes
 asks user to rate how harmonious they sound

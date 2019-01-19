@@ -38,6 +38,7 @@ print('samples loaded: ', len(ys))
 
 ys = rankdata(ys) / len(ys)     # normalize ranking
 
+# TODO use bins instead
 smooth = savgol_filter(ys, 15, 3)
 # smooth = savgol_filter(smooth, 21, 3)
 
